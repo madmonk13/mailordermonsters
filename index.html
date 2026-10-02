@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mail Order Monsters</title>
+  <meta name="description" content="A modern remake of the 1986 classic: order a monster, upgrade it, and battle in the arena." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game" aria-label="Battle arena"></canvas>
+
+  <!-- Title -->
+  <section id="screen-title" class="screen">
+    <div class="title-bg"><canvas id="title-parade"></canvas></div>
+    <div class="title-wrap">
+      <div class="stamp">EST. 1986 · NOW IN HI-RES</div>
+      <h1 class="logo"><span>MAIL</span><span>ORDER</span><span>MONSTERS</span></h1>
+      <p class="tagline">Order a beast. Mutate it. Send it into the arena. <br/>Satisfaction guaranteed or your monster back.*</p>
+      <div class="title-buttons">
+        <button id="btn-continue" class="btn btn-primary btn-lg">Continue</button>
+        <button id="btn-new" class="btn btn-lg">New Game</button>
+        <button id="btn-howto" class="btn btn-ghost">How to Play</button>
+      </div>
+      <p class="fineprint">*Monster may arrive partially assembled. Not responsible for city blocks.</p>
+    </div>
+  </section>
+
+  <!-- Hub -->
+  <section id="screen-hub" class="screen hidden">
+    <header class="hub-head">
+      <div class="brand" id="brand-home" title="Back to title">MOM</div>
+      <nav class="tabs" id="tabs">
+        <button data-tab="stable">🏠 <span>Stable</span></button>
+        <button data-tab="catalog">📖 <span>Catalog</span></button>
+        <button data-tab="armory">🔫 <span>Armory</span></button>
+        <button data-tab="lab">🧬 <span>Gene Lab</span></button>
+        <button data-tab="arena" class="tab-arena">⚔️ <span>Arena</span></button>
+      </nav>
+      <div class="head-right">
+        <div class="cash" id="cash">$0</div>
+        <button class="icon-btn" id="btn-sound" title="Toggle sound">🔊</button>
+      </div>
+    </header>
+    <div class="hub-body">
+      <aside class="active-card" id="active-card"></aside>
+      <main class="tab-content" id="tab-content"></main>
+    </div>
+  </section>
+
+  <!-- Battle overlays -->
+  <section id="screen-pause" class="screen overlay hidden">
+    <div class="modal-card center">
+      <h2>Paused</h2>
+      <div class="controls-grid" id="pause-controls"></div>
+      <div class="row gap">
+        <button id="btn-resume" class="btn btn-primary">Resume</button>
+        <button id="btn-forfeit" class="btn btn-danger">Forfeit</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-results" class="screen overlay hidden">
+    <div class="modal-card results" id="results-card"></div>
+  </section>
+
+  <div id="modal-root"></div>
+  <div id="toasts"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/battle_render.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
