@@ -12,6 +12,8 @@
     spitter: { r: 13, hp: 14, spd: 125, colors: { p: '#c46be0', s: '#7a3a99', a: '#b6ff3b', d: '#3a1a4a' } },
   };
   const HORDE_WAVES = [8, 12, 16];
+  const PIXEL_BUDGET = 2.4e6;
+  const QUALITY_KEY = 'mom_quality';
 
   class Battle {
     constructor(canvas, cfg, hooks) {
@@ -32,6 +34,9 @@
       this.pickupT = 7;
       this.fields = {};
       this.miniDirty = true;
+      this.perfMs = 0; this.perfN = 0;
+      this.quality = 1;
+      try { this.quality = clamp(parseFloat(localStorage.getItem(QUALITY_KEY)) || 1, 0.5, 1); } catch (e) {}
 
       const W = this.world;
       const a = W.center(W.spawnA.tx, W.spawnA.ty), b = W.center(W.spawnB.tx, W.spawnB.ty);
@@ -75,11 +80,15 @@
     }
 
     resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = window.innerWidth, h = window.innerHeight;
-      this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(h * dpr);
+      // Render resolution: device pixel ratio, capped to a pixel budget (a full
+      // 2x Retina canvas is ~5M pixels a frame), then scaled by adaptive quality.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cap = Math.sqrt(PIXEL_BUDGET / (w * h));
+      const scale = Math.max(0.5, Math.min(dpr, cap) * this.quality);
+      this.cv.width = Math.round(w * scale); this.cv.height = Math.round(h * scale);
       this.cv.style.width = w + 'px'; this.cv.style.height = h + 'px';
-      this.dpr = dpr; this.sw = w; this.sh = h;
+      this.dpr = scale; this.sw = w; this.sh = h;
       this.zoom = clamp(Math.min(w / 980, h / 680), 0.55, 1.5);
       this.vw = w / this.zoom; this.vh = h / this.zoom;
     }
@@ -202,15 +211,37 @@
     // ---------- Main loop ----------
     loop(now) {
       if (!this.running) return;
-      let dt = Math.min(0.05, (now - this.last) / 1000);
+      const raw = now - this.last;
+      let dt = Math.min(0.05, raw / 1000);
       this.last = now;
       if (this.state !== 'paused') {
+        this.trackPerf(raw);
         dt *= this.timeScale;
         this.update(dt);
+        this.render(dt);
+        this.pausedDrawn = false;
+      } else if (!this.pausedDrawn) {
+        // The paused scene is static; draw it once.
+        this.render(0);
+        this.pausedDrawn = true;
       }
-      this.render(dt);
       MOM.Input.endFrame();
       requestAnimationFrame(this._loop);
+    }
+
+    // If frames run consistently slow, step the render resolution down. The
+    // setting is remembered so the next battle starts at the right quality.
+    trackPerf(ms) {
+      if (ms > 100) return; // tab switch or hitch, not steady load
+      this.perfMs += ms; this.perfN++;
+      if (this.perfMs < 2000) return;
+      const avg = this.perfMs / this.perfN;
+      this.perfMs = 0; this.perfN = 0;
+      if (avg > 20 && this.quality > 0.55) {
+        this.quality = Math.max(0.5, this.quality - 0.15);
+        try { localStorage.setItem(QUALITY_KEY, String(this.quality)); } catch (e) {}
+        this.resize();
+      }
     }
 
     pause() {

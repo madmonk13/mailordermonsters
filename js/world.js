@@ -26,6 +26,7 @@ MOM.World = class {
     }
     this.prerender();
     for (const [tx, ty, kind] of this.destroyed) this.rubble(tx, ty, kind);
+    this.buildObstacleLayer();
   }
 
   // Compact, JSON-safe copy of the terrain for save/restore.
@@ -194,8 +195,12 @@ MOM.World = class {
     if (!o || o.kind === 'wall') return null;
     o.hp -= dmg;
     o.shake = 0.18;
+    const i = this.idx(tx, ty);
+    // While shaking, the obstacle is drawn live rather than from the cache.
+    if (!this.shaking.has(i)) { this.shaking.add(i); this.dirty.add(i); }
     if (o.hp <= 0) {
-      this.obs[this.idx(tx, ty)] = null;
+      this.obs[i] = null;
+      this.dirty.add(i);
       this.destroyed.push([tx, ty, o.kind]);
       this.rubble(tx, ty, o.kind);
       return o;
@@ -322,16 +327,53 @@ MOM.World = class {
     }
   }
 
-  drawObstacles(c, cam, vw, vh, t, dt) {
-    const { T } = this;
-    const x0 = Math.max(0, Math.floor(cam.x / T) - 1), x1 = Math.min(this.W - 1, Math.ceil((cam.x + vw) / T));
-    const y0 = Math.max(0, Math.floor(cam.y / T) - 1), y1 = Math.min(this.H - 1, Math.ceil((cam.y + vh) / T));
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+  // Obstacles are cached in their own world-sized layer and only re-drawn
+  // around tiles that change, instead of re-drawing every tree each frame.
+  buildObstacleLayer() {
+    const cv = document.createElement('canvas');
+    cv.width = this.pw; cv.height = this.ph;
+    this.obsCv = cv;
+    this.dirty = new Set();
+    this.shaking = new Set();
+    const c = cv.getContext('2d');
+    for (let y = 0; y < this.H; y++) for (let x = 0; x < this.W; x++) {
       const o = this.obs[this.idx(x, y)];
-      if (!o) continue;
-      let px = x * T, py = y * T;
-      if (o.shake > 0) { o.shake -= dt; px += (Math.random() - 0.5) * 5; py += (Math.random() - 0.5) * 5; }
-      this.drawOb(c, o, px, py, x, y);
+      if (o) this.drawOb(c, o, x * this.T, y * this.T, x, y);
+    }
+  }
+
+  // Re-draw the 3x3 tiles around a changed tile. Obstacle art (shadows,
+  // canopies) can spill up to one tile, so neighbours two tiles out are redrawn
+  // clipped to that region.
+  refreshTile(i) {
+    const { T, W } = this, tx = i % W, ty = (i / W) | 0;
+    const c = this.obsCv.getContext('2d');
+    c.save();
+    c.beginPath(); c.rect((tx - 1) * T, (ty - 1) * T, T * 3, T * 3); c.clip();
+    c.clearRect((tx - 1) * T, (ty - 1) * T, T * 3, T * 3);
+    for (let y = ty - 2; y <= ty + 2; y++) for (let x = tx - 2; x <= tx + 2; x++) {
+      if (!this.inb(x, y)) continue;
+      const j = this.idx(x, y), o = this.obs[j];
+      if (o && !this.shaking.has(j)) this.drawOb(c, o, x * T, y * T, x, y);
+    }
+    c.restore();
+  }
+
+  drawObstacles(c, cam, vw, vh, t, dt) {
+    for (const i of this.shaking) {
+      const o = this.obs[i];
+      if (o) o.shake -= dt;
+      if (!o || o.shake <= 0) { this.shaking.delete(i); this.dirty.add(i); }
+    }
+    for (const i of this.dirty) this.refreshTile(i);
+    this.dirty.clear();
+    const sx = Math.max(0, cam.x), sy = Math.max(0, cam.y);
+    const sw = Math.min(this.pw - sx, vw), sh = Math.min(this.ph - sy, vh);
+    if (sw > 0 && sh > 0) c.drawImage(this.obsCv, sx, sy, sw, sh, sx, sy, sw, sh);
+    const T = this.T;
+    for (const i of this.shaking) {
+      const o = this.obs[i], tx = i % this.W, ty = (i / this.W) | 0;
+      this.drawOb(c, o, tx * T + (Math.random() - 0.5) * 5, ty * T + (Math.random() - 0.5) * 5, tx, ty);
     }
   }
 

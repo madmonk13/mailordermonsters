@@ -26,10 +26,17 @@ MOM.Art = (() => {
     c.strokeStyle = stroke; c.lineWidth = lw; c.lineCap = 'round'; c.lineJoin = 'round';
     c.stroke();
   }
-  function eye(c, x, y, r, col, glow) {
-    if (glow) { c.shadowColor = col; c.shadowBlur = 6; }
+  // A soft translucent ring standing in for shadowBlur glow, which is far too
+  // expensive to use per-sprite every frame.
+  function halo(c, x, y, r, col) {
+    const a = c.globalAlpha;
+    c.globalAlpha = a * 0.35;
     circ(c, x, y, r, col);
-    c.shadowBlur = 0;
+    c.globalAlpha = a;
+  }
+  function eye(c, x, y, r, col, glow) {
+    if (glow) halo(c, x, y, r * 1.8, col);
+    circ(c, x, y, r, col);
     circ(c, x + r * 0.3, y, r * 0.45, '#111');
   }
 
@@ -85,9 +92,8 @@ MOM.Art = (() => {
       line(c, [-10, -6, -4, -2, -8, 5], P.d, 1.5);
       line(c, [2, 8, 6, 4, 4, -2], P.d, 1.5);
       poly(c, [4, -7, 12, -6, 14, 0, 12, 6, 4, 7, 2, 0], P.s, P.d);
-      c.shadowColor = P.a; c.shadowBlur = 8;
+      halo(c, 11, -3, 3.6, P.a); halo(c, 11, 3, 3.6, P.a);
       circ(c, 11, -3, 1.8, P.a); circ(c, 11, 3, 1.8, P.a);
-      c.shadowBlur = 0;
     },
 
     wyrm(c, P, t, w, atk, moving) {
@@ -152,9 +158,8 @@ MOM.Art = (() => {
       poly(c, [6, -4, 4, -11, 11, -5], P.p, P.d, 1.5);
       poly(c, [6, 4, 4, 11, 11, 5], P.p, P.d, 1.5);
       circ(c, 10 + atk * 4, 0, 6, P.p, P.d);
-      c.shadowColor = P.a; c.shadowBlur = 6;
+      halo(c, 13 + atk * 4, 0, 4.6, P.a);
       circ(c, 13 + atk * 4, -2.5, 1.6, P.a); circ(c, 13 + atk * 4, 2.5, 1.6, P.a);
-      c.shadowBlur = 0;
       line(c, [15 + atk * 4, -1.2, 17 + atk * 4, -1.2], '#fff', 1.2);
       line(c, [15 + atk * 4, 1.2, 17 + atk * 4, 1.2], '#fff', 1.2);
     },
@@ -173,9 +178,8 @@ MOM.Art = (() => {
       ell(c, -5, -5, 5, 3, -0.6, 'rgba(255,255,255,0.25)');
       poly(c, [-6, -2, -14, 0, -6, 2], '#f4f0e0', P.d, 1);
       circ(c, 7, 0, 7.5, '#fff', P.d);
-      c.shadowColor = P.a; c.shadowBlur = 8;
+      halo(c, 9, 0, 6, P.a);
       circ(c, 9, 0, 4.2, P.a);
-      c.shadowBlur = 0;
       circ(c, 10, 0, 2, '#111');
       line(c, [1, -6, 9, -8, 14, -5], P.d, 2);
     },
@@ -225,9 +229,8 @@ MOM.Art = (() => {
       const rec = atk * -3;
       c.fillStyle = P.d;
       c.fillRect(2 + rec, -16, 14, 4); c.fillRect(2 + rec, 12, 14, 4);
-      c.shadowColor = P.a; c.shadowBlur = 8;
+      c.globalAlpha *= 0.35; c.fillStyle = P.a; c.fillRect(4, -7, 9, 14); c.globalAlpha /= 0.35;
       c.fillStyle = P.a; c.fillRect(6, -5, 5, 10);
-      c.shadowBlur = 0;
       line(c, [-6, -4, -14, -10], P.d, 1.5);
       circ(c, -14, -10, 1.8, Math.sin(t * 6) > 0 ? '#ff3b3b' : '#551111');
       line(c, [-5, 4, 2, 4], P.s, 1);
@@ -241,9 +244,7 @@ MOM.Art = (() => {
       circ(c, 0, 0, 11, P.p, P.d);
       poly(c, [4, -7, -2, -22, -4, -8], P.p, P.d, 1.5);
       poly(c, [4, 7, -2, 22, -4, 8], P.p, P.d, 1.5);
-      c.shadowColor = P.a; c.shadowBlur = 6;
       circ(c, 7 + atk * 3, -4, 2.6, P.a); circ(c, 7 + atk * 3, 4, 2.6, P.a);
-      c.shadowBlur = 0;
       line(c, [10 + atk * 3, -2, 12 + atk * 3, 0, 10 + atk * 3, 2], '#fff', 1.5);
     },
   };
@@ -283,9 +284,10 @@ MOM.Art = (() => {
   }
   function paintPortrait(cv, t) {
     const { type, opts } = cv._mon;
-    const dpr = window.devicePixelRatio || 1;
-    const w = cv.clientWidth || cv.width, h = cv.clientHeight || cv.height;
-    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
     const c = cv.getContext('2d');
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.clearRect(0, 0, w, h);
@@ -294,13 +296,17 @@ MOM.Art = (() => {
       moving: opts.moving, colors: opts.colors,
     });
   }
-  function animatePortraits() {
-    const t = performance.now() / 1000;
+  let lastPaint = 0;
+  function animatePortraits(now) {
+    requestAnimationFrame(animatePortraits);
+    if (now - lastPaint < 32) return;
+    lastPaint = now;
+    const t = now / 1000;
     for (const cv of portraits) {
       if (!cv.isConnected) { portraits.delete(cv); continue; }
+      if (cv.offsetParent === null) continue; // inside a hidden screen
       paintPortrait(cv, t);
     }
-    requestAnimationFrame(animatePortraits);
   }
   requestAnimationFrame(animatePortraits);
 

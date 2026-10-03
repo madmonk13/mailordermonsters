@@ -34,7 +34,7 @@
     const order = this.fighters.filter((f) => f.alive).sort((a, b) => (a.type === 'bat') - (b.type === 'bat') || a.y - b.y);
     for (const f of order) this.drawFighter(c, f);
     if (this.flags) for (const fl of this.flags) this.drawFlag(c, fl);
-    for (const p of this.projs) this.drawProj(c, p);
+    this.drawProjs(c);
     this.drawParticles(c);
     this.drawTexts(c);
 
@@ -82,42 +82,49 @@
     }
   };
 
-  P.drawProj = function (c, p) {
+  // Projectiles in two passes so the additive-blend state is switched once
+  // per frame rather than once per projectile.
+  P.drawProjs = function (c) {
+    if (!this.projs.length) return;
+    for (const p of this.projs) if (!GLOWY[p.wid]) this.drawProj(c, p, false);
+    c.globalCompositeOperation = 'lighter';
+    for (const p of this.projs) if (GLOWY[p.wid]) this.drawProj(c, p, true);
+    c.globalCompositeOperation = 'source-over';
+  };
+  const GLOWY = { laser: 1, eye: 1, flame: 1, freeze: 1, rocket: 1 };
+
+  P.drawProj = function (c, p, glowPass) {
     const D = p.D, age = 1 - p.life / p.max;
     const a = Math.atan2(p.vy, p.vx);
     switch (p.wid) {
       case 'laser': case 'eye': {
-        c.globalCompositeOperation = 'lighter';
         A.line(c, [p.x - p.vx * 0.025, p.y - p.vy * 0.025, p.x, p.y], D.color, p.wid === 'eye' ? 6 : 5);
         A.line(c, [p.x - p.vx * 0.02, p.y - p.vy * 0.02, p.x, p.y], '#fff', 2);
-        c.globalCompositeOperation = 'source-over';
         break;
       }
       case 'flame': {
-        c.globalCompositeOperation = 'lighter';
         const r = 5 + age * 18;
         const col = age < 0.3 ? `rgba(255,240,150,${0.7 - age})` : age < 0.65 ? `rgba(255,140,30,${0.6 - age * 0.4})` : `rgba(200,50,20,${0.5 - age * 0.45})`;
         A.circ(c, p.x, p.y, r, col);
-        c.globalCompositeOperation = 'source-over';
         break;
       }
       case 'rocket': {
-        c.save(); c.translate(p.x, p.y); c.rotate(a);
-        c.globalCompositeOperation = 'lighter';
-        A.circ(c, -10, 0, 5 + Math.random() * 3, 'rgba(255,170,40,0.8)');
+        // Exhaust glows; the body is drawn normally so it stays solid.
+        const ca = Math.cos(a), sa = Math.sin(a);
+        A.circ(c, p.x - ca * 10, p.y - sa * 10, 5 + Math.random() * 3, 'rgba(255,170,40,0.8)');
         c.globalCompositeOperation = 'source-over';
+        c.save(); c.translate(p.x, p.y); c.rotate(a);
         c.fillStyle = '#d9dde3'; rr(c, -8, -3.5, 14, 7, 3); c.fill();
         c.fillStyle = '#ff4f4f'; c.beginPath(); c.moveTo(6, -3.5); c.lineTo(11, 0); c.lineTo(6, 3.5); c.fill();
         c.restore();
+        c.globalCompositeOperation = 'lighter';
         break;
       }
       case 'freeze': {
-        c.globalCompositeOperation = 'lighter';
         A.circ(c, p.x, p.y, 9, 'rgba(127,232,255,0.35)');
         c.save(); c.translate(p.x, p.y); c.rotate(this.t * 10);
         A.poly(c, [0, -6, 3, 0, 0, 6, -3, 0], '#e8fbff');
         c.restore();
-        c.globalCompositeOperation = 'source-over';
         break;
       }
       default: {
@@ -132,9 +139,8 @@
     A.circ(c, m.x, m.y + 2, 9, 'rgba(0,0,0,0.3)');
     A.circ(c, m.x, m.y, 8, '#3a3d42', '#1a1c20', 1.5);
     const on = m.arm > 0 ? true : Math.sin(this.t * 10) > 0;
-    if (on) { c.shadowColor = '#ff3b3b'; c.shadowBlur = 8; }
+    if (on) A.circ(c, m.x, m.y, 6, 'rgba(255,59,59,0.35)');
     A.circ(c, m.x, m.y, 3, on ? '#ff4f4f' : '#661a1a');
-    c.shadowBlur = 0;
     c.strokeStyle = TEAM[m.team]; c.globalAlpha = 0.5; c.lineWidth = 1.5;
     c.beginPath(); c.arc(m.x, m.y, 11, 0, TAU); c.stroke(); c.globalAlpha = 1;
   };
@@ -190,23 +196,29 @@
     }
   };
 
+  // Normal particles first, then every additive (glow) particle in one pass.
   P.drawParticles = function (c) {
-    for (const p of this.parts) {
-      const k = clamp(p.life / p.max, 0, 1);
-      if (p.ring) {
-        const r = p.r0 + (p.r1 - p.r0) * (1 - k);
-        c.globalAlpha = k;
-        c.strokeStyle = p.color; c.lineWidth = p.lw || 2.5;
-        c.beginPath(); c.arc(p.x, p.y, Math.max(0.1, r), 0, TAU); c.stroke();
-        c.globalAlpha = 1;
-        continue;
+    const vx0 = this.cam.x - 40, vy0 = this.cam.y - 40, vx1 = this.cam.x + this.vw + 40, vy1 = this.cam.y + this.vh + 40;
+    let glow = false;
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 1) { if (!glow) break; c.globalCompositeOperation = 'lighter'; }
+      for (const p of this.parts) {
+        if (!!p.glow !== (pass === 1)) { if (p.glow) glow = true; continue; }
+        if (p.x < vx0 || p.y < vy0 || p.x > vx1 || p.y > vy1) continue;
+        const k = clamp(p.life / p.max, 0, 1);
+        if (p.ring) {
+          const r = p.r0 + (p.r1 - p.r0) * (1 - k);
+          c.globalAlpha = k;
+          c.strokeStyle = p.color; c.lineWidth = p.lw || 2.5;
+          c.beginPath(); c.arc(p.x, p.y, Math.max(0.1, r), 0, TAU); c.stroke();
+          continue;
+        }
+        if (p.smoke) { c.globalAlpha = k * 0.8; A.circ(c, p.x, p.y, p.size * (1.6 - k * 0.6), p.color); }
+        else { c.globalAlpha = Math.min(1, k * 1.5); A.circ(c, p.x, p.y, Math.max(0.3, p.size * (0.4 + k * 0.6)), p.color); }
       }
-      if (p.glow) c.globalCompositeOperation = 'lighter';
-      if (p.smoke) { c.globalAlpha = k * 0.8; A.circ(c, p.x, p.y, p.size * (1.6 - k * 0.6), p.color); }
-      else { c.globalAlpha = Math.min(1, k * 1.5); A.circ(c, p.x, p.y, Math.max(0.3, p.size * (0.4 + k * 0.6)), p.color); }
-      c.globalAlpha = 1;
-      c.globalCompositeOperation = 'source-over';
     }
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
   };
 
   P.drawTexts = function (c) {
